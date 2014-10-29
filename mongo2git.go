@@ -3,52 +3,56 @@ package main
 import (
   "fmt"
   "gopkg.in/mgo.v2"
+  "io/ioutil"
   "os"
   "encoding/json"
 //  "gopkg.in/mgo.v2/bson"
 )
 
+var mongoConnection = "mongodb://54.171.48.210/coinvision"
+var mongoDb = "coinvision"
+var mongoCollection = "bitfinex_l2"
+var gitRepoPath = os.Args[1]
+
 func main() {
-  sess, err := mgo.Dial("mongodb://54.171.48.210/coinvision")
+  sess, err := mgo.Dial(mongoConnection)
   if err != nil {
-    fmt.Printf("Can't connect to mongo, go error %v\n", err)
+    fmt.Printf("Can't connect to mongo %v\n", err)
     os.Exit(1)
   }
   defer sess.Close() 
 
   sess.SetSafe(&mgo.Safe{})
-  collection := sess.DB("coinvision").C("bitfinex_l2")
-
+  collection := sess.DB(mongoDb).C(mongoCollection)
 
   var result map[string]interface{}
   iter := collection.Find(nil).Iter()
   for i := 0; i < 5 ; i++ {
     iter.Next(&result)
-    writeJson(result, i)
+    err = updateFile(result)
+    if err != nil {
+      fmt.Println("Cannot update a mongo entry %v", err )
+    }
   }
   if err := iter.Close(); err != nil {
     panic(err)
   }
+}
 
- /* result := make([]map[string]interface{}, 10)
-  err = collection.Find(nil).All(&result)
+func updateFile(book map[string]interface{}) error {
+  b, err := json.MarshalIndent(book, "", " ")
   if err != nil {
-    panic(err)
+    return err
   }
-
-  fmt.Printf("Result: %v", result)
-
-  for r := range result {
-    fmt.Printf("Result: %v\n", r)
-  }*/
+  err = ioutil.WriteFile(gitRepoPath + "/" + mongoCollection, b, 0644)
+  if (err != nil) {
+    return err
+  }
+  fmt.Printf("book: %s\n\n\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", b)
+  return nil
 }
 
-func writeJson(obj map[string]interface{}, index int) {
-    b, err := json.Marshal(obj)
-    if err != nil {
-        panic(err)
-    }
-    fmt.Printf("book: %s\n\n\n", b)
+func commit() error {
+  return nil
 }
-
 
