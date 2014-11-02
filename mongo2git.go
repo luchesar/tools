@@ -8,6 +8,7 @@ import (
   "os"
   "log"
   "github.com/libgit2/git2go"
+  "github.com/jmcvetta/napping"
   "encoding/json"
   "time"
   "runtime"
@@ -23,8 +24,26 @@ var mongoDb = "coinvision"
 var mongoCollection = "bitfinex_l2"
 
 var gitRepoPath = os.Args[1]
-  
+
 func main() {
+  fetchBitFinextOrderBook() 
+}
+
+func fetchBitFinextOrderBook() {
+  s := napping.Session{}
+  params := napping.Params{"group": "0"}
+  var res map[string]interface{}
+  resp, err :=s.Get("https://api.bitfinex.com/v1/book/btcusd", &params, &res, nil); try(err)
+  if resp.Status() == 200 {
+    now := time.Now().UnixNano()
+    res["timestamp"] = now
+    fmt.Println("successfully downloaded order book at Unix time %s", now)
+  } else {
+    fmt.Println("Failed to get the order book from Bitfinex")
+  }
+}
+  
+func migrateMongo() {
   sess, err := mgo.Dial(mongoConnection); try(err)
   defer sess.Close()
 
