@@ -8,11 +8,11 @@ import (
 	"github.com/libgit2/git2go"
 	"gopkg.in/mgo.v2"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
-	"runtime"
 	"time"
+	"log"
+        "runtime"
 )
 
 const (
@@ -23,11 +23,14 @@ var mongoConnection = "mongodb://54.171.48.210/coinvision"
 var mongoDb = "coinvision"
 var mongoCollection = "bitfinex_l2"
 
-var gitRepoPath = os.Args[1]
-
 func main() {
-	gitRepo, err := git.OpenRepository(gitRepoPath)
-	try(err)
+        var gitRepoPath = os.Args[1]
+        migrateMongo(gitRepoPath)
+        fetchForever(gitRepoPath)
+}
+
+func fetchForever(gitRepoPath string) {
+	gitRepo, err := git.OpenRepository(gitRepoPath); Try(err)
 	defer gitRepo.Free()
 
 	ticker := time.NewTicker(time.Second)
@@ -35,7 +38,7 @@ func main() {
 
 	go func() {
 		for {
-			updateFile(gitRepo, <-books)
+			updateFile(gitRepoPath, gitRepo, <-books)
 		}
 	}()
 
@@ -46,12 +49,11 @@ func main() {
 }
 
 func fetchBitFinextOrderBook(books chan map[string]interface{}) {
-	defer catch("Cannot fetch bitfinex order book")
+	defer Catch("Cannot fetch bitfinex order book")
 	s := napping.Session{}
 	params := napping.Params{"group": "0"}
 	var res map[string]interface{}
-	resp, err := s.Get("https://api.bitfinex.com/v1/book/btcusd", &params, &res, nil)
-	try(err)
+	resp, err := s.Get("https://api.bitfinex.com/v1/book/btcusd", &params, &res, nil); Try(err)
 	if resp.Status() == 200 {
 		now := time.Now().UnixNano()
 		res["timestamp"] = now
@@ -62,13 +64,11 @@ func fetchBitFinextOrderBook(books chan map[string]interface{}) {
 	}
 }
 
-func migrateMongo() {
-	sess, err := mgo.Dial(mongoConnection)
-	try(err)
+func migrateMongo(gitRepoPath string) {
+	sess, err := mgo.Dial(mongoConnection); Try(err)
 	defer sess.Close()
 
-	gitRepo, err := git.OpenRepository(gitRepoPath)
-	try(err)
+	gitRepo, err := git.OpenRepository(gitRepoPath); Try(err)
 	defer gitRepo.Free()
 
 	sess.SetSafe(&mgo.Safe{})
@@ -76,19 +76,19 @@ func migrateMongo() {
 
 	var result map[string]interface{}
 	iter := collection.Find(nil).Iter()
-	defer try(iter.Close())
+	defer Try(iter.Close())
 	for i := 0; i < 5; i++ {
 		iter.Next(&result)
-		updateFile(gitRepo, result)
+                fmt.Printf("Order book fetched from Mongodb: %v\n", result["timestamp"])
+		updateFile(gitRepoPath, gitRepo, result)
 	}
 }
 
-func updateFile(gitRepo *git.Repository, book map[string]interface{}) {
-	defer catch("Cannot handle a record")
-	b, err := json.MarshalIndent(book, "", " ")
-	try(err)
+func updateFile(gitRepoPath string, gitRepo *git.Repository, book map[string]interface{}) {
+	defer Catch("Cannot handle a record")
+	b, err := json.MarshalIndent(book, "", " "); Try(err)
 	var filePath = path.Clean(path.Dir(gitRepoPath) + "/" + mongoCollection)
-	try(ioutil.WriteFile(filePath, b, 0644))
+	Try(ioutil.WriteFile(filePath, b, 0644))
 	fmt.Printf("file %s written with size %d and timestamp %v\n", filePath, len(b), book["timestamp"])
 
 	gitAddAndCommit(gitRepo, []string{mongoCollection}, "book id "+fmt.Sprintf("%v", book["_id"]))
@@ -113,44 +113,37 @@ func gitCommit(repo *git.Repository, message string, tree *git.Tree) {
 	}
 	parentCommit := make([]*git.Commit, 0)
 
-	master, err := repo.LookupReference(MasterRef)
-	try(err)
+	master, err := repo.LookupReference(MasterRef); Try(err)
 	defer master.Free()
 
 	objId := master.Target()
-	c, err := repo.LookupCommit(objId)
-	try(err)
+	c, err := repo.LookupCommit(objId); Try(err)
 
 	parentCommit = append(parentCommit, c)
-	_, err = repo.CreateCommit(MasterRef, signature, signature, message, tree, parentCommit...)
-	try(err)
+	_, err = repo.CreateCommit(MasterRef, signature, signature, message, tree, parentCommit...); Try(err)
 }
 
 func gitAdd(repo *git.Repository, paths ...string) *git.Tree {
-	indx, err := repo.Index()
-	try(err)
+	indx, err := repo.Index(); Try(err)
 	defer indx.Free()
 
 	// Go through all the filepaths and add them to the indx
 	for _, file := range paths {
-		try(indx.AddByPath(file))
+		Try(indx.AddByPath(file))
 	}
 
-	try(indx.Write())
-	treeID, err := indx.WriteTree()
-	try(err)
-	tree, err := repo.LookupTree(treeID)
-	try(err)
+	Try(indx.Write())
+	treeID, err := indx.WriteTree(); Try(err)
+	tree, err := repo.LookupTree(treeID); Try(err)
 	return tree
 }
-
-func try(err error) {
+func Try(err error) {
 	if err != nil {
 		panic(err)
 	}
 }
 
-func catch(message string) {
+func Catch(message string) {
 	if r := recover(); r != nil {
 		_, fn, line, _ := runtime.Caller(1)
 		log.Printf("[error] %s:%d %v", fn, line, r)
