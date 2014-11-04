@@ -46,6 +46,7 @@ func main() {
 }
 
 func fetchBitFinextOrderBook(books chan map[string]interface{}) {
+	defer catch("Cannot fetch bitfinex order book")
 	s := napping.Session{}
 	params := napping.Params{"group": "0"}
 	var res map[string]interface{}
