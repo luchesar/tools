@@ -77,8 +77,7 @@ func migrateMongo(gitRepoPath string) {
 	var result map[string]interface{}
 	iter := collection.Find(nil).Iter()
 	defer Try(iter.Close())
-	for i := 0; i < 5; i++ {
-		iter.Next(&result)
+	for iter.Next(&result) {
                 fmt.Printf("Order book fetched from Mongodb: %v\n", result["timestamp"])
 		updateFile(gitRepoPath, gitRepo, result)
 	}
